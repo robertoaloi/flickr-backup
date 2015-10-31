@@ -29,6 +29,7 @@ PHOTOSET_ID=
 
 PHOTOS_SKIPPED=0
 PHOTOS_UPLOADED=0
+PHOTOS_DUPLICATED=0
 
 ################################################################################
 # Flickcurl Wrappers
@@ -137,6 +138,10 @@ function skip {
   echo -n "x"
 }
 
+function duplicate {
+  echo -n "D"
+}
+
 function timestamp {
   echo -n "$(date +%s)"
 }
@@ -193,15 +198,24 @@ function photo_upload_nodup {
   # Each photo is tagged with its own SHA1
   tags=$(sha1 "$file")
 
-  # Prevent duplicates by checking whether a photo with the same tag exists
-  photo_lookup "$tags"
-  if [ -z "$PHOTO_ID" ]; then
-    photo_upload "$file" "$tags"
-    progress
-    PHOTOS_UPLOADED=$((PHOTOS_UPLOADED+1))
+  # Prevent local duplicates
+  sha_lookup "$tags"
+  if [ "$?" != "0" ]; then
+    # Prevent remote duplicates
+    photo_lookup "$tags"
+    if [ -z "$PHOTO_ID" ]; then
+      photo_upload "$file" "$tags"
+      progress
+      PHOTOS_UPLOADED=$((PHOTOS_UPLOADED+1))
+    else
+      skip
+      PHOTOS_SKIPPED=$((PHOTOS_SKIPPED+1))
+    fi
+      sha_write "$tags"
   else
-    skip
-    PHOTOS_SKIPPED=$((PHOTOS_SKIPPED+1))
+    log "Trying to upload duplicated file: $file. Skipping."
+    duplicate
+    PHOTOS_DUPLICATED=$((PHOTOS_DUPLICATED+1))
   fi
 
 }
@@ -216,6 +230,16 @@ function log {
   text=$*
   prefix=$(datetime)
   echo "[$prefix] $text" >> "$logfile"
+}
+
+function sha_write {
+  sha=$1
+  echo "$sha" >> "$logfile.sha"
+}
+
+function sha_lookup {
+  sha=$1
+  grep -q -s -w "$sha" "$logfile.sha"
 }
 
 ################################################################################
@@ -262,16 +286,19 @@ for f in "${files[@]:1}"; do
   log "$(line)"
   log "Select photo: $f"
   photo_upload_nodup "$f"
-  photoset_add "$PHOTOSET_ID" "$PHOTO_ID"
+  if ! [ -z $PHOTO_UPLOADED]; then
+    photoset_add "$PHOTOSET_ID" "$PHOTO_ID"
+  fi
 done
 
 # Log summary
 log "$(line)"
 log "Uploaded $PHOTOS_UPLOADED photos"
-log "Skipped $PHOTOS_SKIPPED photos"
+log "Skipped $PHOTOS_SKIPPED photos (already uploaded)"
+log "Skipped $PHOTOS_DUPLICATED photos (local duplicates)"
 num_photos=$(photoset_size)
 log "Photoset: $PHOTOSET_ID contains $num_photos photos"
-if [ "$num_files" == "$num_photos" ]; then
+if [ "$num_files" == $(("$num_photos"-"$PHOTOS_DUPLICATED")) ]; then
   log "Photoset verification succeeded: $num_files files == $num_photos photos"
   result "OK" 0
 else
