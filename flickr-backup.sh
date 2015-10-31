@@ -60,9 +60,12 @@ function photoset_add {
 
   # Add photo to photoset
   flickcurl -q photosets.addPhoto "$PHOTOSET_ID" "$PHOTO_ID"
-
-  # Log event
-  log "Add photo: $PHOTO_ID to photoset: $PHOTOSET_ID"
+  if [ $? == 0 ]; then
+    # Log event
+    log "Add photo: $PHOTO_ID to photoset: $PHOTOSET_ID"
+  else
+    log "Error adding photo: $PHOTO_ID to photoset: $PHOTOSET_ID"
+  fi
 
 }
 
