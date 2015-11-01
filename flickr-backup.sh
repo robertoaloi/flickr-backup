@@ -22,6 +22,7 @@ function usage {
 
 PHOTO_ID=
 PHOTOSET_ID=
+TO_ADD=
 
 ################################################################################
 # Counters
@@ -29,6 +30,7 @@ PHOTOSET_ID=
 
 PHOTOS_SKIPPED=0
 PHOTOS_UPLOADED=0
+PHOTOS_ERROR=0
 PHOTOS_DUPLICATED=0
 
 ################################################################################
@@ -114,11 +116,15 @@ function photo_upload {
   tags=$2
 
   # Upload photo to Flickr
-  res=$(flickcurl -q upload "$file" hidden hidden tags "$tags")
+  res=$(flickcurl -q upload "$file" hidden hidden tags "$tags" 2>&1)
 
-  # Log and return the PHOTO_ID
-  PHOTO_ID=$(echo $res | rev | cut -d' ' -f1 | rev)
-  log "Upload photo: $PHOTO_ID with tags: $tags"
+  if [ "$?" == "0" ]; then
+    PHOTO_ID=$(echo $res | rev | cut -d' ' -f1 | rev)
+    log "Upload photo: $PHOTO_ID with tags: $tags"
+  else
+    PHOTO_ID=
+    log "Upload error: $res"
+  fi
 
 }
 
@@ -142,6 +148,10 @@ function duplicate {
   echo -n "D"
 }
 
+function error {
+  echo -n "E"
+}
+
 function timestamp {
   echo -n "$(date +%s)"
 }
@@ -159,7 +169,7 @@ function result {
   log "$msg"
   log "$(line)"
 
-  echo "$msg"
+  tail -n 10 "$logfile"
   echo "Complete logs are available at: $logfile"
 
   exit "$result"
@@ -205,17 +215,26 @@ function photo_upload_nodup {
     photo_lookup "$tags"
     if [ -z "$PHOTO_ID" ]; then
       photo_upload "$file" "$tags"
-      progress
-      PHOTOS_UPLOADED=$((PHOTOS_UPLOADED+1))
+      if [ -z "$PHOTO_ID" ]; then
+	  error
+	  PHOTOS_ERROR=$((PHOTOS_ERROR+1))
+	  TO_ADD=
+      else
+          progress
+          PHOTOS_UPLOADED=$((PHOTOS_UPLOADED+1))
+	  TO_ADD=1
+      fi
     else
       skip
       PHOTOS_SKIPPED=$((PHOTOS_SKIPPED+1))
+      TO_ADD=1
     fi
-      sha_write "$tags"
+    sha_write "$tags"
   else
     log "Trying to upload duplicated file: $file. Skipping."
     duplicate
     PHOTOS_DUPLICATED=$((PHOTOS_DUPLICATED+1))
+    TO_ADD=
   fi
 
 }
@@ -286,7 +305,7 @@ for f in "${files[@]:1}"; do
   log "$(line)"
   log "Select photo: $f"
   photo_upload_nodup "$f"
-  if ! [ -z $PHOTO_UPLOADED]; then
+  if ! [ -z $TO_ADD ]; then
     photoset_add "$PHOTOSET_ID" "$PHOTO_ID"
   fi
 done
@@ -296,9 +315,10 @@ log "$(line)"
 log "Uploaded $PHOTOS_UPLOADED photos"
 log "Skipped $PHOTOS_SKIPPED photos (already uploaded)"
 log "Skipped $PHOTOS_DUPLICATED photos (local duplicates)"
+log "Failed uploading $PHOTOS_ERROR photos"
 num_photos=$(photoset_size)
 log "Photoset: $PHOTOSET_ID contains $num_photos photos"
-if [ "$num_files" == $(("$num_photos"-"$PHOTOS_DUPLICATED")) ]; then
+if [ "$num_files" == $(($num_photos-$PHOTOS_DUPLICATED)) ]; then
   log "Photoset verification succeeded: $num_files files == $num_photos photos"
   result "OK" 0
 else
