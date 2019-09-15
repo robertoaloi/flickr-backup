@@ -205,6 +205,12 @@ function photo_upload_nodup {
   # Handle function arguments
   file=$1
 
+  extension="${file##*.}"
+  if [ "$extension" == "HEIC" ]; then
+    heic_to_jpg $file;
+    file="$file.jpg"
+  fi
+
   # Each photo is tagged with its own SHA1
   tags=$(sha1 "$file")
 
@@ -237,6 +243,18 @@ function photo_upload_nodup {
     TO_ADD=
   fi
 
+  if [ "$extension" == "HEIC" ]; then
+    log "Removing converted file $file"
+    rm "$file"
+  fi
+
+}
+
+function heic_to_jpg {
+  src=$1
+  tgt="$1.jpg"
+  log "Converting $src to $tgt."
+  magick convert "$src" "$tgt"
 }
 
 function log_init {
