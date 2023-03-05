@@ -68,6 +68,15 @@ function photoset_add {
     log "Add photo: $PHOTO_ID to photoset: $PHOTOSET_ID"
   else
     log "Error adding photo: $PHOTO_ID to photoset: $PHOTOSET_ID"
+    # The Flickr API is flaky. Retry one more time.
+    flickcurl -q photosets.addPhoto "$PHOTOSET_ID" "$PHOTO_ID"
+    if [ $? == 0 ]; then
+      # Log event
+      log "[Retry #1] Add photo: $PHOTO_ID to photoset: $PHOTOSET_ID"
+    else
+      log "[Retry #1] Error adding photo: $PHOTO_ID to photoset: $PHOTOSET_ID"
+      log "[Retry #1] Giving up."
+    fi
   fi
 
 }
