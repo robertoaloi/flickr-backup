@@ -355,8 +355,9 @@ log "Skipped $PHOTOS_UNSUPPORTED files (.AAE)"
 log "Failed uploading $PHOTOS_ERROR photos"
 num_photos=$(photoset_size)
 log "Photoset: $PHOTOSET_ID contains $num_photos photos"
-excluded=$(($num_files-$PHOTOS_DUPLICATED-$PHOTOS_UNSUPPORTED))
-if [ "$num_photos" == "$excluded" ]; then
+excluded=$(($PHOTOS_DUPLICATED+$PHOTOS_UNSUPPORTED))
+expected=$(($num_files-$excluded))
+if [ "$num_photos" == "$num_files" ]; then
   log "Photoset verification succeeded: $num_files - $excluded files == $num_photos photos"
   result "OK" 0
 else
