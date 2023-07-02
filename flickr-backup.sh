@@ -29,6 +29,7 @@ TO_ADD=
 ################################################################################
 
 PHOTOS_SKIPPED=0
+PHOTOS_UNSUPPORTED=0
 PHOTOS_UPLOADED=0
 PHOTOS_ERROR=0
 PHOTOS_DUPLICATED=0
@@ -153,6 +154,10 @@ function skip {
   echo -n "x"
 }
 
+function unsupported {
+  echo -n "U"
+}
+
 function duplicate {
   echo -n "D"
 }
@@ -216,47 +221,51 @@ function photo_upload_nodup {
 
   extension="${file##*.}"
   if [ "$extension" == "HEIC" ]; then
-    heic_to_jpg $file;
+    heic_to_jpg "$file";
     file="$file.jpg"
   fi
 
-  # Each photo is tagged with its own SHA1
-  tags=$(sha1 "$file")
-
-  # Prevent local duplicates
-  sha_lookup "$tags"
-  if [ "$?" != "0" ]; then
-    # Prevent remote duplicates
-    photo_lookup "$tags"
-    if [ -z "$PHOTO_ID" ]; then
-      photo_upload "$file" "$tags"
+  if [ "$extension" == "AAE" ]; then
+    unsupported
+    PHOTOS_UNSUPPORTED=$((PHOTOS_UNSUPPORTED+1))
+    TO_ADD=
+  else
+    # Each photo is tagged with its own SHA1
+    tags=$(sha1 "$file")
+    # Prevent local duplicates
+    sha_lookup "$tags"
+    if [ "$?" != "0" ]; then
+      # Prevent remote duplicates
+      photo_lookup "$tags"
       if [ -z "$PHOTO_ID" ]; then
-	  error
-	  PHOTOS_ERROR=$((PHOTOS_ERROR+1))
-	  TO_ADD=
-      else
+        photo_upload "$file" "$tags"
+        if [ -z "$PHOTO_ID" ]; then
+	        error
+	        PHOTOS_ERROR=$((PHOTOS_ERROR+1))
+	        TO_ADD=
+        else
           progress
           PHOTOS_UPLOADED=$((PHOTOS_UPLOADED+1))
-	  TO_ADD=1
+	        TO_ADD=1
+        fi
+      else
+        skip
+        PHOTOS_SKIPPED=$((PHOTOS_SKIPPED+1))
+        TO_ADD=1
       fi
+      sha_write "$tags"
     else
-      skip
-      PHOTOS_SKIPPED=$((PHOTOS_SKIPPED+1))
-      TO_ADD=1
+      log "Trying to upload duplicated file: $file. Skipping."
+      duplicate
+      PHOTOS_DUPLICATED=$((PHOTOS_DUPLICATED+1))
+      TO_ADD=
     fi
-    sha_write "$tags"
-  else
-    log "Trying to upload duplicated file: $file. Skipping."
-    duplicate
-    PHOTOS_DUPLICATED=$((PHOTOS_DUPLICATED+1))
-    TO_ADD=
-  fi
 
-  if [ "$extension" == "HEIC" ]; then
-    log "Removing converted file $file"
-    rm "$file"
+    if [ "$extension" == "HEIC" ]; then
+      log "Removing converted file $file"
+      rm "$file"
+    fi
   fi
-
 }
 
 function heic_to_jpg {
@@ -342,13 +351,15 @@ log "$(line)"
 log "Uploaded $PHOTOS_UPLOADED photos"
 log "Skipped $PHOTOS_SKIPPED photos (already uploaded)"
 log "Skipped $PHOTOS_DUPLICATED photos (local duplicates)"
+log "Skipped $PHOTOS_UNSUPPORTED files (.AAE)"
 log "Failed uploading $PHOTOS_ERROR photos"
 num_photos=$(photoset_size)
 log "Photoset: $PHOTOSET_ID contains $num_photos photos"
-if [ "$num_files" == $(($num_photos-$PHOTOS_DUPLICATED)) ]; then
-  log "Photoset verification succeeded: $num_files files == $num_photos photos"
+excluded=$(($num_files-$PHOTOS_DUPLICATED-$PHOTOS_UNSUPPORTED))
+if [ "$num_photos" == "$excluded" ]; then
+  log "Photoset verification succeeded: $num_files - $excluded files == $num_photos photos"
   result "OK" 0
 else
-  log "Photoset verification failed: $num_files files VS $num_photos photos"
+  log "Photoset verification failed: $num_files - $excluded files VS $num_photos photos"
   result "ERROR" 1
 fi
