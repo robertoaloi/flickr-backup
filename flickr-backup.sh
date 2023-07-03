@@ -353,6 +353,8 @@ log "Skipped $PHOTOS_SKIPPED photos (already uploaded)"
 log "Skipped $PHOTOS_DUPLICATED photos (local duplicates)"
 log "Skipped $PHOTOS_UNSUPPORTED files (.AAE)"
 log "Failed uploading $PHOTOS_ERROR photos"
+# Give a bit of time to fetch the proper photos size
+sleep 5
 num_photos=$(photoset_size)
 log "Photoset: $PHOTOSET_ID contains $num_photos photos"
 excluded=$(($PHOTOS_DUPLICATED+$PHOTOS_UNSUPPORTED))
